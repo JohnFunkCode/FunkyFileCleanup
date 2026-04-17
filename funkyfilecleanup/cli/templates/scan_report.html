@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Scan Report — {{ report.root_path }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      color: #1a1a2e;
+      background: #f5f5f0;
+      padding: 2rem;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.1rem; font-weight: 600; margin: 2rem 0 0.75rem; color: #444; }
+
+    .summary {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.5rem 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .summary-item label {
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #888;
+    }
+
+    .summary-item span {
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 0.6rem 0.85rem;
+      background: #eef0f4;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #555;
+      border-bottom: 1px solid #ddd;
+    }
+
+    tbody tr:hover { background: #f9f9f6; }
+
+    tbody tr.top-type { background: #f0f7f0; }
+    tbody tr.top-type:hover { background: #e6f2e6; }
+
+    td {
+      padding: 0.55rem 0.85rem;
+      border-bottom: 1px solid #eee;
+      vertical-align: middle;
+    }
+
+    tbody tr:last-child td { border-bottom: none; }
+
+    td.rank   { color: #999; width: 3rem; text-align: right; }
+    td.ext    { font-family: monospace; font-size: 0.9rem; }
+    td.files  { text-align: right; color: #555; }
+    td.size   { text-align: right; font-weight: 500; }
+    td.pct    { text-align: right; color: #555; width: 5rem; }
+    td.bar    { width: 220px; padding-right: 1rem; }
+
+    .bar-track {
+      background: #e8e8e8;
+      border-radius: 3px;
+      height: 10px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      background: #4a7c59;
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    tr.top-type .bar-fill { background: #2d6a4f; }
+
+    .threshold-row td {
+      background: #f5f5f0;
+      color: #aaa;
+      font-size: 0.75rem;
+      text-align: center;
+      padding: 0.3rem;
+      border-bottom: 1px dashed #ccc;
+      font-style: italic;
+    }
+
+    .footnote {
+      margin-top: 0.5rem;
+      font-size: 0.8rem;
+      color: #999;
+    }
+
+    .db-path {
+      margin-top: 2rem;
+      font-size: 0.8rem;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Scan Report</h1>
+
+  <div class="summary">
+    <div class="summary-item">
+      <label>Path</label>
+      <span>{{ report.root_path }}</span>
+    </div>
+    <div class="summary-item">
+      <label>Scanned</label>
+      <span>{{ report.scanned_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    </div>
+    <div class="summary-item">
+      <label>Total Files</label>
+      <span>{{ report.total_files | format_int }}</span>
+    </div>
+    <div class="summary-item">
+      <label>Total Size</label>
+      <span>{{ report.total_size_bytes | human_size }}</span>
+    </div>
+    <div class="summary-item">
+      <label>Largest Single File</label>
+      <span>{{ report.largest_file.name }} &nbsp;({{ report.largest_file.size_bytes | human_size }})</span>
+    </div>
+  </div>
+
+  <h2>File Types by Total Space</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="rank">#</th>
+        <th>Extension</th>
+        <th style="text-align:right">Files</th>
+        <th style="text-align:right">Total Size</th>
+        <th style="text-align:right">% of Total</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set threshold_crossed = namespace(done=false) %}
+      {% for stats in visible_stats %}
+        {% if not threshold_crossed.done and stats.rank > threshold_rank %}
+          {% set threshold_crossed.done = true %}
+          <tr class="threshold-row">
+            <td colspan="6">— 50th percentile — stored to database above this line —</td>
+          </tr>
+        {% endif %}
+        <tr {% if stats.rank <= threshold_rank %}class="top-type"{% endif %}>
+          <td class="rank">{{ stats.rank }}</td>
+          <td class="ext">{{ stats.extension if stats.extension else '(none)' }}</td>
+          <td class="files">{{ stats.file_count | format_int }}</td>
+          <td class="size">{{ stats.total_size_bytes | human_size }}</td>
+          <td class="pct">{{ "%.1f" | format(stats.pct_of_total * 100) }}%</td>
+          <td class="bar">
+            <div class="bar-track">
+              <div class="bar-fill" style="width: {{ (stats.pct_of_total * 100) | int }}%"></div>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="footnote">
+    Showing {{ visible_stats | length }} type(s) ≥ 1% of the largest type.
+    {% if hidden_count > 0 %}{{ hidden_count }} type(s) below 1% not shown.{% endif %}
+  </p>
+
+  <p class="db-path">Database: {{ db_path }}</p>
+
+</body>
+</html>
