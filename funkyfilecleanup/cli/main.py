@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import sys
+import time
+from contextlib import contextmanager
+from itertools import groupby
 from pathlib import Path
+from typing import Generator
 
 import click
 from jinja2 import Environment, FileSystemLoader
@@ -16,6 +21,15 @@ _REPORTS_DIR = Path("reports")
 _DATABASE_DIR = Path("database")
 
 
+@contextmanager
+def _phase(label: str) -> Generator[None, None, None]:
+    print(f"{label}...", end="", flush=True, file=sys.stderr)
+    t0 = time.perf_counter()
+    yield
+    elapsed = time.perf_counter() - t0
+    print(f" done in {elapsed:.1f}s", file=sys.stderr)
+
+
 @click.group()
 def cli() -> None:
     pass
@@ -27,7 +41,9 @@ def cli() -> None:
               help="SQLite output path (default: database/<name>-<date>.db)")
 @click.option("--ignore", multiple=True, metavar="PATTERN",
               help="Directory name to ignore (repeatable)")
-def scan(path: Path, db: Path | None, ignore: tuple[str, ...]) -> None:
+@click.option("--dup-types", multiple=True, metavar="EXT",
+              help="File extension to analyze for duplicate directories (e.g. .jpg). Repeatable.")
+def scan(path: Path, db: Path | None, ignore: tuple[str, ...], dup_types: tuple[str, ...]) -> None:
     """Scan PATH and report file types ranked by total space consumed."""
     from datetime import date
     stem = _report_stem(path, date.today())
@@ -40,11 +56,27 @@ def scan(path: Path, db: Path | None, ignore: tuple[str, ...]) -> None:
     repository.initialize()
 
     service = ScanService(repository=repository, scanner=scanner)
-    report = service.run(path)
+
+    with _phase("Building report and saving to database"):
+        report, run_id = service.run(path)
+
+    dup_pairs: list[dict] = []
+    if dup_types:
+        with _phase("Analyzing duplicate directories"):
+            dup_pairs = repository.find_duplicate_directory_pairs(run_id, list(dup_types))
+        click.echo(f"  → {len(dup_pairs):,} directory pair(s) with shared files", file=sys.stderr)
+    else:
+        click.echo(
+            "  (Skipping duplicate analysis — use --dup-types .ext to enable)",
+            file=sys.stderr,
+        )
+
     repository.close()
 
     _print_report(report, db)
-    html_path = _write_html_report(report, db)
+
+    with _phase("Writing HTML report"):
+        html_path = _write_html_report(report, db, dup_pairs, list(dup_types))
     click.echo(f"HTML report  →  {html_path}")
 
 
@@ -102,15 +134,63 @@ def _print_report(report: ScanReport, db: Path) -> None:
     click.echo()
 
 
+# ── Duplicate pair grouping ───────────────────────────────────────────────────
+
+def _group_dup_pairs(pairs: list[dict], root: Path) -> list[dict]:
+    """Group and sort duplicate pairs by their top-level directory under root.
+
+    Within each group pairs are sorted alphabetically by path so subfolders of
+    the same tree stay together.  Groups are sorted by total recoverable bytes.
+    """
+    root_depth = len(root.parts)
+
+    def _top(directory: str) -> str:
+        parts = Path(directory).parts
+        return parts[root_depth] if len(parts) > root_depth else parts[-1]
+
+    def _normalize(pair: dict) -> dict:
+        d1, d2 = pair["directory_1"], pair["directory_2"]
+        if d1 > d2:
+            return {**pair, "directory_1": d2, "directory_2": d1}
+        return pair
+
+    normalized = sorted(
+        (_normalize(p) for p in pairs),
+        key=lambda p: (p["directory_1"], p["directory_2"]),
+    )
+
+    def _group_key(pair: dict) -> tuple[str, str]:
+        a, b = _top(pair["directory_1"]), _top(pair["directory_2"])
+        return (min(a, b), max(a, b))
+
+    groups = []
+    for key, group_iter in groupby(normalized, key=_group_key):
+        group_pairs = list(group_iter)
+        a, b = key
+        label = f"{a}  ↔  {b}" if a != b else a
+        total_bytes = sum(p["total_size_bytes"] for p in group_pairs)
+        groups.append({
+            "label": label,
+            "total_size_bytes": total_bytes,
+            "pairs": group_pairs,
+        })
+
+    groups.sort(key=lambda g: g["total_size_bytes"], reverse=True)
+    return groups
+
+
 # ── HTML report ───────────────────────────────────────────────────────────────
 
-def _write_html_report(report: ScanReport, db: Path) -> Path:
+def _write_html_report(report: ScanReport, db: Path, dup_pairs: list[dict], dup_types: list[str]) -> Path:
     visible = [s for s in report.type_stats if s.pct_of_total >= _MIN_PCT]
     hidden_count = len(report.type_stats) - len(visible)
 
     env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=True)
     env.filters["human_size"] = _human
     env.filters["format_int"] = lambda n: f"{n:,}"
+
+    grouped_pairs = _group_dup_pairs(dup_pairs, report.root_path)
+    total_pairs = sum(len(g["pairs"]) for g in grouped_pairs)
 
     template = env.get_template("scan_report.html")
     html = template.render(
@@ -119,6 +199,9 @@ def _write_html_report(report: ScanReport, db: Path) -> Path:
         hidden_count=hidden_count,
         threshold_rank=report.threshold_rank,
         db_path=db,
+        grouped_pairs=grouped_pairs,
+        total_pairs=total_pairs,
+        dup_types=dup_types,
     )
 
     _REPORTS_DIR.mkdir(exist_ok=True)

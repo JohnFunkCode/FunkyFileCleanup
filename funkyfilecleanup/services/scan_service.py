@@ -23,7 +23,7 @@ class ScanService:
         self,
         root: Path,
         tree: DirectoryNode | None = None,
-    ) -> ScanReport:
+    ) -> tuple[ScanReport, int]:
         if tree is None:
             tree = self._scanner.scan(root)
 
@@ -42,8 +42,8 @@ class ScanService:
             type_stats=type_stats,
             threshold_rank=threshold_rank,
         )
-        self._repository.save_scan(report, files_by_extension=files_by_extension)
-        return report
+        run_id = self._repository.save_scan(report, files_by_extension=files_by_extension)
+        return report, run_id
 
 
 def _collect_files(node: DirectoryNode) -> list[FileNode]:

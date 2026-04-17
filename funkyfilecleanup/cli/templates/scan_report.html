@@ -118,6 +118,140 @@
       font-size: 0.8rem;
       color: #aaa;
     }
+
+    a { color: #2d6a4f; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Duplicate pairs ───────────────────────────────────────── */
+
+    .dup-pair-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .dup-pair {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .dup-pair-header {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      padding: 0.55rem 1rem;
+      background: #eef0f4;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .dup-count {
+      font-weight: 600;
+      font-size: 0.9rem;
+      white-space: nowrap;
+      color: #2d6a4f;
+    }
+
+    .dup-dirs {
+      padding: 0.6rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .dup-dir {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    .dup-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
+      white-space: nowrap;
+      min-width: 1.4rem;
+    }
+
+    .dup-dir a {
+      font-family: monospace;
+      font-size: 0.88rem;
+      word-break: break-all;
+      overflow-wrap: anywhere;
+    }
+
+    details.dup-files {
+      border-top: 1px solid #eee;
+    }
+
+    details.dup-files summary {
+      padding: 0.4rem 1rem;
+      font-size: 0.8rem;
+      color: #666;
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+    }
+
+    details.dup-files summary::before {
+      content: '▶ ';
+      font-size: 0.65rem;
+      color: #aaa;
+    }
+
+    details.dup-files[open] summary::before { content: '▼ '; }
+
+    details.dup-files summary:hover { background: #f5f5f0; }
+
+    .dup-file-list {
+      padding: 0.4rem 1rem 0.6rem 2.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.2rem 1rem;
+    }
+
+    .dup-file-list li {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #555;
+      list-style: disc;
+    }
+
+    .dup-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .dup-group-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.5rem 0.75rem;
+      background: #2d6a4f;
+      color: #fff;
+      border-radius: 6px 6px 0 0;
+      margin-bottom: 0;
+    }
+
+    .dup-group-header + .dup-pair-list .dup-pair:first-child {
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+    }
+
+    .dup-group-label {
+      font-weight: 600;
+      font-size: 0.9rem;
+      font-family: monospace;
+    }
+
+    .dup-group-meta {
+      font-size: 0.8rem;
+      opacity: 0.85;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -189,6 +323,59 @@
     Showing {{ visible_stats | length }} type(s) ≥ 1% of the largest type.
     {% if hidden_count > 0 %}{{ hidden_count }} type(s) below 1% not shown.{% endif %}
   </p>
+
+  {% if grouped_pairs %}
+  <h2>Directories with Shared Files</h2>
+  <p style="font-size:0.85rem;color:#666;margin-bottom:0.4rem;">
+    {{ total_pairs }} directory pair(s) in {{ grouped_pairs | length }} group(s), matched by name + size.
+    Grouped and sorted by filesystem location. Click a path to open it in Finder.
+  </p>
+  <p style="font-size:0.85rem;color:#666;margin-bottom:1rem;">
+    Types analyzed:
+    {% for ext in dup_types %}
+      <code style="background:#eef0f4;padding:0.1rem 0.35rem;border-radius:3px;font-size:0.8rem;">{{ ext }}</code>
+    {% endfor %}
+  </p>
+
+  {% for group in grouped_pairs %}
+  <div class="dup-group">
+    <div class="dup-group-header">
+      <span class="dup-group-label">{{ group.label }}</span>
+      <span class="dup-group-meta">
+        {{ group.pairs | length }} pair(s) · {{ group.total_size_bytes | human_size }} recoverable per copy removed
+      </span>
+    </div>
+    <div class="dup-pair-list">
+      {% for pair in group.pairs %}
+      <div class="dup-pair">
+        <div class="dup-pair-header">
+          <span class="dup-count">{{ pair.shared_file_count }} shared file{{ 's' if pair.shared_file_count != 1 }}</span>
+          <span style="font-size:0.8rem;color:#555;">{{ pair.total_size_bytes | human_size }}</span>
+        </div>
+        <div class="dup-dirs">
+          <div class="dup-dir">
+            <span class="dup-label">A</span>
+            <a href="file://{{ pair.directory_1 }}">{{ pair.directory_1 }}</a>
+          </div>
+          <div class="dup-dir">
+            <span class="dup-label">B</span>
+            <a href="file://{{ pair.directory_2 }}">{{ pair.directory_2 }}</a>
+          </div>
+        </div>
+        <details class="dup-files">
+          <summary>Show {{ pair.shared_file_count }} file{{ 's' if pair.shared_file_count != 1 }}</summary>
+          <ul class="dup-file-list">
+            {% for f in pair.shared_files %}
+            <li>{{ f }}</li>
+            {% endfor %}
+          </ul>
+        </details>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
 
   <p class="db-path">Database: {{ db_path }}</p>
 

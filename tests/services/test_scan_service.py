@@ -57,7 +57,7 @@ class TestScanServiceGroupingAndRanking:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
         assert isinstance(report, ScanReport)
 
     def test_groups_files_by_extension(self, fixed_mtime: datetime) -> None:
@@ -68,7 +68,7 @@ class TestScanServiceGroupingAndRanking:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         extensions = {s.extension for s in report.type_stats}
         assert extensions == {".jpg", ".mp4"}
@@ -82,7 +82,7 @@ class TestScanServiceGroupingAndRanking:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.type_stats[0].extension == ".mp4"
         assert report.type_stats[1].extension == ".jpg"
@@ -98,7 +98,7 @@ class TestScanServiceGroupingAndRanking:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.type_stats[0].pct_of_total == pytest.approx(1000 / 1400)
 
@@ -112,7 +112,7 @@ class TestScanServiceGroupingAndRanking:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.type_stats[1].pct_of_total == pytest.approx(400 / 1400)
 
@@ -125,7 +125,7 @@ class TestScanServiceGroupingAndRanking:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         jpg_stats = next(s for s in report.type_stats if s.extension == ".jpg")
         assert jpg_stats.file_count == 3
@@ -137,7 +137,7 @@ class TestScanServiceGroupingAndRanking:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         jpg_stats = next(s for s in report.type_stats if s.extension == ".jpg")
         assert jpg_stats.total_size_bytes == 300
@@ -151,7 +151,7 @@ class TestScanServiceGroupingAndRanking:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         jpg_stats = next(s for s in report.type_stats if s.extension == ".jpg")
         assert jpg_stats.largest_file_size_bytes == 800
@@ -171,7 +171,7 @@ class TestScanServiceThreshold:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.threshold_rank == math.ceil(6 / 2)
 
@@ -188,7 +188,7 @@ class TestScanServiceThreshold:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.threshold_rank == math.ceil(5 / 2)
 
@@ -196,7 +196,7 @@ class TestScanServiceThreshold:
         tree = _build_tree([_file("/root", "a.jpg", 100, fixed_mtime)])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.threshold_rank == 1
 
@@ -212,7 +212,7 @@ class TestScanServiceLargestFile:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.largest_file.name == "big.cr3"
         assert report.largest_file.size_bytes == 5000
@@ -225,7 +225,7 @@ class TestScanServiceLargestFile:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.total_files == 3
 
@@ -236,7 +236,7 @@ class TestScanServiceLargestFile:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         assert report.total_size_bytes == 600
 
@@ -248,7 +248,7 @@ class TestScanServiceRepositoryInteraction:
         tree = _build_tree([_file("/root", "a.jpg", 100, fixed_mtime)])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        service.run(Path("/root"), tree=tree)
+        _, _ = service.run(Path("/root"), tree=tree)
 
         assert len(repo.saved) == 1
 
@@ -258,7 +258,7 @@ class TestScanServiceRepositoryInteraction:
         tree = _build_tree([_file("/root", "a.jpg", 100, fixed_mtime)])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        report = service.run(Path("/root"), tree=tree)
+        report, _ = service.run(Path("/root"), tree=tree)
 
         saved_report, _ = repo.saved[0]
         assert saved_report is report
@@ -272,7 +272,7 @@ class TestScanServiceRepositoryInteraction:
         ])
         repo = FakeScanRepository()
         service = ScanService(repository=repo)
-        service.run(Path("/root"), tree=tree)
+        _, _ = service.run(Path("/root"), tree=tree)
 
         _, files_by_ext = repo.saved[0]
         assert ".jpg" in files_by_ext
